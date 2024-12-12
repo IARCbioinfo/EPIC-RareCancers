@@ -170,10 +170,6 @@ gtsave(gt_table4,"table4.docx")
 ########################################################################################
 ################# ANALYSES #############################################################
 
-################### Calculation of 5-year survival
-model <- survfit(Surv(time_followup, case_hn)~Smoke_Stat+Alc_Pattern+Hypert+Diabet+Sex+Age_Recr+Country+L_School,data=as.data.frame(DB_summary))
-summary(model,5)
-
 ################### Cox model - adjusted model which include standard risk factors
 
 #Reorder factors to have reference with enough cases
@@ -182,56 +178,76 @@ levels(DB_summary$L_School)[levels(DB_summary$L_School)=='Longer education (incl
 DB_summary$L_School <- factor(DB_summary$L_School, levels=c("Primary school completed","Technical/professional school","Longer education","Secondary school","None","Not specified"))
 DB_summary$Alc_Pattern <- factor(DB_summary$Alc_Pattern, levels=c("Never drinkers","Former light drinkers","Light drinkers","Never heavy drinkers","Periodically heavy drinkers","Always heavy drinkers","Former heavy drinkers","Unknown"))
 
+#Rename variables
+DB_summary_OK <- DB_summary %>% 
+  rename("School_level" = "L_School",
+         "Age_at_recruitment" = "Age_Recr",
+         "Age_at_diagnosis" = "Age_diag",
+         "Hypertension" = "Hypert",
+         "Diabetes" = "Diabet",
+         "BMI"= "Bmi_C",
+         "Smoking_status"="Smoke_Stat",
+         "Smoking_status_and_intensity"="Smoke_Intensity",
+         "Alcohol_pattern"="Alc_Pattern",
+         "Asbestos"="Asbestos_Cum",
+         "Physical_activity"="Pa_Total",
+         "Vital_status"="Vit_Stat",
+         "Energy_intake"="QE_ENERGY")
+
 ################### ALL HN
+#remove France (not enough cases)
+DB_summary_HN_OK <- DB_summary_OK %>% filter(Country != "France")
+DB_summary_HN_OK$Country = droplevels(DB_summary_HN_OK$Country)
+levels(DB_summary_HN_OK$Country)
 
 ###############################################################################################################
 #All effective factors using Smoking intensity
 
-HN_Cox_adj_all_v2 <-coxph(Surv(time_followup, case_hn)~Smoke_Intensity+Alc_Pattern+Hypert+Diabet+Sex+Age_Recr+Country+L_School,data=DB_summary)
+HN_Cox_adj_all_v2 <-coxph(Surv(time_followup, case_hn)~Smoking_status_and_intensity+Alcohol_pattern+Hypertension+Diabetes+Sex+Age_at_recruitment+Country+School_level,data=DB_summary_HN_OK)
 summary(HN_Cox_adj_all_v2)
-ggforest(HN_Cox_adj_all_v2, data=as.data.frame(DB_summary))
+ggforest(HN_Cox_adj_all_v2, data=as.data.frame(DB_summary_HN_OK)) #Supp-Fig2
 
 #Test of cox model - Proportional hazard assumption -> Schoenfeld residuals
 test_v2.ph <- cox.zph(HN_Cox_adj_all_v2)
-ggcoxzph(test_v2.ph, caption="Supplementary Figure 1: Stratification and Schoenfeld residual tests for head and neck rare cancers, based on a model incorporating all factors: \nsmoking intensity, alcohol consumption patterns, hypertension, diabetes, sex, age at recruitment, country, and education level")
+ggcoxzph(test_v2.ph) #Supp-Fig1
 
 #Other plot for v2 => Figure 3 of manuscript
 HN_datarecord_adj_all_v2<-as.data.frame(summary(HN_Cox_adj_all_v2)$conf.int[,c(1,3,4)]) #just need the HR, lowerCI and UpperCI
 HN_datarecord_adj_all_v2$Variables<-rownames(HN_datarecord_adj_all_v2)
 HN_datarecord_adj_all_v2<-HN_datarecord_adj_all_v2 %>% rename(HR=`exp(coef)`, LowerCI=`lower .95`,UpperCI=`upper .95`)
-HN_datarecord_adj_all_v2$Model<-"Adjusted for sex, age, country, smoking, alcohol, hypertension, diabet and highest school level"
+HN_datarecord_adj_all_v2$Model<-"Adjusted for sex, age, country, smoking, alcohol, hypertension, diabetes and highest school level"
 
 HN_datarecord_adj_all_v2 <- mutate(HN_datarecord_adj_all_v2, Variables = case_when( 
-  Variables == "Smoke_IntensityCurrent, 1-15 cig/day" ~ "Current smoker, 1-15 cig/day",
-  Variables == "Smoke_IntensityCurrent, 16-25 cig/day" ~ "Current smoker, 16-25 cig/day",
-  Variables == "Smoke_IntensityCurrent, 26+ cig/day" ~ "Current smoker, 26+ cig/day",
-  Variables == "Smoke_IntensityFormer, quit <= 10 years" ~ "Former smoker, quit <= 10 years",
-  Variables == "Smoke_IntensityFormer, quit 11-20 years" ~ "Former smoker, quit 11-20 years",
-  Variables == "Smoke_IntensityFormer, quit 20+ years" ~ "Former smoker, quit 20+ years",
-  Variables == "Smoke_IntensityCurrent, pipe/cigar/occas" ~ "Current smoker, pipe/cigar/occas",
-  Variables == "Alc_PatternFormer light drinkers" ~ "Former light drinkers",
-  Variables == "Alc_PatternLight drinkers" ~ "Light drinkers",
-  Variables == "Alc_PatternNever heavy drinkers" ~ "Never heavy drinkers",
-  Variables == "Alc_PatternPeriodically heavy drinkers" ~ "Periodically heavy drinkers",
-  Variables == "Alc_PatternAlways heavy drinkers" ~ "Always heavy drinkers",
-  Variables == "Alc_PatternFormer heavy drinkers" ~ "Former heavy drinkers",
-  Variables == "HypertYes" ~ "Hypertension: Yes",
-  Variables == "DiabetYes" ~ "Diabetes: Yes",
+  Variables == "Smoking_status_and_intensityCurrent, 1-15 cig/day" ~ "Current smoker, 1-15 cig/day",
+  Variables == "Smoking_status_and_intensityCurrent, 16-25 cig/day" ~ "Current smoker, 16-25 cig/day",
+  Variables == "Smoking_status_and_intensityCurrent, 26+ cig/day" ~ "Current smoker, 26+ cig/day",
+  Variables == "Smoking_status_and_intensityFormer, quit <= 10 years" ~ "Former smoker, quit <= 10 years",
+  Variables == "Smoking_status_and_intensityFormer, quit 11-20 years" ~ "Former smoker, quit 11-20 years",
+  Variables == "Smoking_status_and_intensityFormer, quit 20+ years" ~ "Former smoker, quit 20+ years",
+  Variables == "Smoking_status_and_intensityCurrent, pipe/cigar/occas" ~ "Current smoker, pipe/cigar/occas",
+  Variables == "Alcohol_patternFormer light drinkers" ~ "Former light drinkers",
+  Variables == "Alcohol_patternLight drinkers" ~ "Light drinkers",
+  Variables == "Alcohol_patternNever heavy drinkers" ~ "Never heavy drinkers",
+  Variables == "Alcohol_patternPeriodically heavy drinkers" ~ "Periodically heavy drinkers",
+  Variables == "Alcohol_patternAlways heavy drinkers" ~ "Always heavy drinkers",
+  Variables == "Alcohol_patternFormer heavy drinkers" ~ "Former heavy drinkers",
+  Variables == "HypertensionYes" ~ "Hypertension: Yes",
+  Variables == "DiabetesYes" ~ "Diabetes: Yes",
   Variables == "SexFemale" ~ "Female",
-  Variables == "Age_Recr" ~ "Age at recruitment",
+  Variables == "Age_at_recruitment" ~ "Age at recruitment",
   TRUE ~ Variables))
 
 HN_datarecord_adj_all_v2$Variables <- factor (HN_datarecord_adj_all_v2$Variables, levels=c("Age at recruitment","Female","Diabetes: Yes","Hypertension: Yes","Former heavy drinkers","Always heavy drinkers","Periodically heavy drinkers","Former light drinkers","Light drinkers","Never heavy drinkers","Former smoker, quit 20+ years","Former smoker, quit 11-20 years","Former smoker, quit <= 10 years","Current smoker, pipe/cigar/occas","Current smoker, 26+ cig/day","Current smoker, 16-25 cig/day","Current smoker, 1-15 cig/day"))
 HN_datarecord_adj_all_v2$Group <- "NA"
   
   HN_datarecord_adj_all_v2 <- mutate(HN_datarecord_adj_all_v2, Group = case_when( 
-    Variables == "Current smoker, 1-15 cig/day" ~ "Smoke intensity",
-    Variables == "Current smoker, 16-25 cig/day" ~ "Smoke intensity",
-    Variables == "Current smoker, 26+ cig/day" ~ "Smoke intensity",
-    Variables == "Former smoker, quit <= 10 years" ~ "Smoke intensity",
-    Variables == "Former smoker, quit 11-20 years" ~ "Smoke intensity",
-    Variables == "Former smoker, quit 20+ years" ~ "Smoke intensity",
-    Variables == "Current smoker, pipe/cigar/occas" ~ "Smoke intensity",
+    Variables == "Current smoker, 1-15 cig/day" ~ "Smoking status & intensity",
+    Variables == "Current smoker, 16-25 cig/day" ~ "Smoking status & intensity",
+    Variables == "Current smoker, 26+ cig/day" ~ "Smoking status & intensity",
+    Variables == "Former smoker, quit <= 10 years" ~ "Smoking status & intensity",
+    Variables == "Former smoker, quit 11-20 years" ~ "Smoking status & intensity",
+    Variables == "Former smoker, quit 20+ years" ~ "Smoking status & intensity",
+    Variables == "Current smoker, pipe/cigar/occas" ~ "Smoking status & intensity",
     Variables == "Former light drinkers" ~ "Alcohol pattern",
     Variables == "Light drinkers" ~ "Alcohol pattern",
     Variables == "Never heavy drinkers" ~ "Alcohol pattern",
@@ -245,11 +261,11 @@ HN_datarecord_adj_all_v2$Group <- "NA"
     TRUE ~ Group))  
   
   HN_datarecord_adj_all_v2_filtered <- HN_datarecord_adj_all_v2 %>% filter(Variables %in% c("Former smoker, quit 11-20 years","Former smoker, quit <= 10 years","Current smoker, pipe/cigar/occas","Current smoker, 26+ cig/day","Current smoker, 16-25 cig/day","Current smoker, 1-15 cig/day","Former smoker, quit 20+ years","Former light drinkers","Light drinkers","Never heavy drinkers","Periodically heavy drinkers","Always heavy drinkers","Former heavy drinkers","Hypertension: Yes","Diabetes: Yes","Female","Age at recruitment"))
-  HN_datarecord_adj_all_v2_filtered$Group_ok = factor(HN_datarecord_adj_all_v2_filtered$Group, levels=c("Smoke intensity","Alcohol pattern","H", "D", "Sex", "Age"))
+  HN_datarecord_adj_all_v2_filtered$Group_ok = factor(HN_datarecord_adj_all_v2_filtered$Group, levels=c("Smoking status & intensity","Alcohol pattern","H", "D", "Sex", "Age"))
   
   plot_All_adj_v2 <-ggplot(HN_datarecord_adj_all_v2_filtered,aes(x=HR,y=Variables))+
   geom_point(position = position_dodge(width=1), size=4)+ #to avoid overlapping + 
-  geom_text(aes(HR, label=paste(round(HR,2)," (95% CI:",round(LowerCI,2),"-",round(UpperCI,2),")", sep="")), size=4, position = position_dodge(width=1), hjust=0.08, vjust=-1.2) +
+  geom_text(aes(HR, label=paste(format(round(HR,digits=2),nsmall=2)," (",format(round(LowerCI,digits=2),nsmall=2),"-",format(round(UpperCI,digits=2),nsmall=2),")", sep="")), size=4, position = position_dodge(width=1), hjust=0.08, vjust=-1.2) +
   geom_errorbarh(aes(xmin=LowerCI,xmax=UpperCI),position = position_dodge(width=1), height=0.35, size=1)+
   geom_vline(xintercept = 1,lty=2, color="purple", size=1)+ #add HR=1 as significance threshold
   theme_bw(base_size=18) +
@@ -257,46 +273,53 @@ HN_datarecord_adj_all_v2$Group <- "NA"
                             "Current smoker, pipe/cigar/occas","Former light drinkers","Light drinkers","Never heavy drinkers","Periodically heavy drinkers","Always heavy drinkers","Former heavy drinkers","Hypertension: Yes","Diabetes: Yes","Female","Age at recruitment"),
                    labels=c("Current smoker, 1-15 cig/day", "Current smoker, 16-25 cig/day","Current smoker, 26+ cig/day","Former smoker, quit <= 10 years","Former smoker, quit 11-20 years","Former smoker, quit 20+ years",
                             "Current smoker, pipe/cigar/occas","Former light drinkers","Light drinkers","Never heavy drinkers","Periodically heavy drinkers","Always heavy drinkers","Former heavy drinkers","Hypertension: Yes","Diabetes: Yes","Female","Age at recruitment")) +
-  theme(axis.text=element_text(size=14), axis.title=element_text(size=20,face="bold"),plot.title = element_text(size = 20, face = "bold")) 
+  theme(axis.text=element_text(size=14), axis.title.y=element_blank(), axis.title.x=element_text(size=20,face="bold"),plot.title = element_text(size = 20, face = "bold")) + xlab ("HR (95%CI)")
 
 p.grid <- plot_All_adj_v2 + facet_grid(Group_ok ~ ., scales = "free_y", space = "free_y", switch="y")
 p.grid #=> Figure 3
 
 #Generate additional table with number per category
 
-event_table_for_figure3_part1 <- as.data.frame(t(table(DB_summary$case_hn,DB_summary$Smoke_Intensity)))
+event_table_for_figure3_part1 <- as.data.frame(t(table(DB_summary_HN_OK$case_hn,DB_summary_HN_OK$Smoking_status_and_intensity)))
 colnames(event_table_for_figure3_part1) <- c("Variable", "Case","Count")
 event_table_for_figure3_part1 <- reshape(event_table_for_figure3_part1, direction='wide', idvar=c("Variable"), timevar="Case")
 event_table_for_figure3_part1 <- event_table_for_figure3_part1 %>% filter (!Variable %in% c("Never","Current/Former, missing","Unknown"))
 event_table_for_figure3_part1_OK <- event_table_for_figure3_part1[c(1:3,7,4:6), ]
 
-event_table_for_figure3_part2 <- as.data.frame(t(table(DB_summary$case_hn,DB_summary$Alc_Pattern)))
+event_table_for_figure3_part2 <- as.data.frame(t(table(DB_summary_HN_OK$case_hn,DB_summary_HN_OK$Alcohol_pattern)))
 colnames(event_table_for_figure3_part2) <- c("Variable", "Case","Count")
 event_table_for_figure3_part2 <- reshape(event_table_for_figure3_part2, direction='wide', idvar=c("Variable"), timevar="Case")
 event_table_for_figure3_part2 <- event_table_for_figure3_part2 %>% filter (!Variable %in% c("Never drinkers","Unknown"))
 event_table_for_figure3_part2_OK <- event_table_for_figure3_part2[c(3,2,1,4:6), ]
 
-event_table_for_figure3_part3 <- as.data.frame(t(table(DB_summary$case_hn,DB_summary$Hypert)))
+event_table_for_figure3_part3 <- as.data.frame(t(table(DB_summary_HN_OK$case_hn,DB_summary_HN_OK$Hypertension)))
 colnames(event_table_for_figure3_part3) <- c("Variable", "Case","Count")
 event_table_for_figure3_part3 <- reshape(event_table_for_figure3_part3, direction='wide', idvar=c("Variable"), timevar="Case")
 event_table_for_figure3_part3_OK <- event_table_for_figure3_part3 %>% filter (!Variable %in% c("No","Do not know"))
 levels(event_table_for_figure3_part3_OK$Variable)[match("Yes",levels(event_table_for_figure3_part3_OK$Variable))] <- "Hypertension: Yes"
 
-event_table_for_figure3_part4 <- as.data.frame(t(table(DB_summary$case_hn,DB_summary$Diabet)))
+
+event_table_for_figure3_part4 <- as.data.frame(t(table(DB_summary_HN_OK$case_hn,DB_summary_HN_OK$Diabetes)))
 colnames(event_table_for_figure3_part4) <- c("Variable", "Case","Count")
 event_table_for_figure3_part4 <- reshape(event_table_for_figure3_part4, direction='wide', idvar=c("Variable"), timevar="Case")
 event_table_for_figure3_part4_OK <- event_table_for_figure3_part4 %>% filter (!Variable %in% c("No","Do not know"))
 levels(event_table_for_figure3_part4_OK$Variable)[match("Yes",levels(event_table_for_figure3_part4_OK$Variable))] <- "Diabet: Yes"
 
-event_table_for_figure3_part5 <- as.data.frame(t(table(DB_summary$case_hn,DB_summary$Sex)))
+event_table_for_figure3_part5 <- as.data.frame(t(table(DB_summary_HN_OK$case_hn,DB_summary_HN_OK$Sex)))
 colnames(event_table_for_figure3_part5) <- c("Variable", "Case","Count")
 event_table_for_figure3_part5 <- reshape(event_table_for_figure3_part5, direction='wide', idvar=c("Variable"), timevar="Case")
 event_table_for_figure3_part5_OK <- event_table_for_figure3_part5 %>% filter (!Variable %in% c("Male"))
 
+table(DB_summary_HN_OK$case_hn) #=> cases=879 + non-cases=310189 - Variable, Count.0, Count.1
+event_table_for_figure3_part6 <- c("Age at recruitment",310189,879)
+
 #Merge tables
 event_table_for_figure3 <- rbind(event_table_for_figure3_part1_OK,event_table_for_figure3_part2_OK,event_table_for_figure3_part3_OK,event_table_for_figure3_part4_OK,event_table_for_figure3_part5_OK) 
-colnames(event_table_for_figure3) =c("Variable","Controls - nb of events","Cases - nb of events")
-event_table_for_figure3_OK <- event_table_for_figure3[,c(1,3,2)]
+colnames(event_table_for_figure3)
+event_table_for_figure3$Variable <- as.character(event_table_for_figure3$Variable)
+event_table_for_figure3_OK <- rbind(event_table_for_figure3,event_table_for_figure3_part6)
+colnames(event_table_for_figure3_OK) =c("Variable","Non-cases\nNb of events","Cases\nNb of events")
+event_table_for_figure3_OK <- event_table_for_figure3_OK[,c(1,3,2)]
 
 library(gridExtra)
 pdf(file = "Table_for_figure3.pdf")
@@ -306,139 +329,131 @@ dev.off()
 
 ######################## OTHER FACTORS with Smoke_Stat instead of Smoke_Intensity for adjustment - all H&N rare cancer cases
 #Bmi_C
-HN_Cox_adj6<-coxph(Surv(time_followup, case_hn)~Bmi_C+Smoke_Stat+Alc_Pattern+Hypert+Diabet+Sex+Age_Recr+Country+L_School,data=DB_summary)
+HN_Cox_adj6<-coxph(Surv(time_followup, case_hn)~BMI+Smoking_status+Alcohol_pattern+Hypertension+Diabetes+Sex+Age_at_recruitment+Country+School_level,data=DB_summary_HN_OK)
 summary(HN_Cox_adj6)
-ggforest(HN_Cox_adj6, data=as.data.frame(DB_summary), main = "Forest plot for coxph model with BMI\n (adjusted by smoking status, alcohol pattern, hypertension, diabetes, sex, age at recruitment, country and school level)\n \n Hazard Ratio")
+suppfig3 <- ggforest(HN_Cox_adj6, data=as.data.frame(DB_summary_HN_OK))
+	#Analysis with only smokers
+HN_Cox_adj6b<-coxph(Surv(time_followup, case_hn)~BMI+Alcohol_pattern+Hypertension+Diabetes+Sex+Age_at_recruitment+Country+School_level,subset=(Smoking_status=="Smoker"), data=DB_summary_HN_OK)
+summary(HN_Cox_adj6b)
+ggforest(HN_Cox_adj6b, data=as.data.frame(DB_summary_HN_OK)) #=> HR=0.95 (CI: 0.92-0.98)
+	#Analysis with only periodically heavy drinkers (remove low drinkers) - without Smoking_status=Unknown
+DB_summary_HN_OK_without_smoking_unknown <- DB_summary_HN_OK %>% filter(Smoking_status != "Unknown")
+DB_summary_HN_OK_without_smoking_unknown$Smoking_status = droplevels(DB_summary_HN_OK_without_smoking_unknown$Smoking_status)
+HN_Cox_adj6c<-coxph(Surv(time_followup, case_hn)~BMI+Smoking_status+Hypertension+Diabetes+Sex+Age_at_recruitment+Country+School_level,subset=(Alcohol_pattern=="Periodically heavy drinkers"), data=DB_summary_HN_OK_without_smoking_unknown)
+summary(HN_Cox_adj6c)
+ggforest(HN_Cox_adj6c, data=as.data.frame(DB_summary_HN_OK_without_smoking_unknown)) #=> HR=0.95 (CI: 0.91-0.99)
+
 #Pa_Total
-HN_Cox_adj7<-coxph(Surv(time_followup, case_hn)~Pa_Total+Smoke_Stat+Alc_Pattern+Hypert+Diabet+Sex+Age_Recr+Country+L_School,data=DB_summary)
+HN_Cox_adj7<-coxph(Surv(time_followup, case_hn)~Physical_activity+Smoking_status+Alcohol_pattern+Hypertension+Diabetes+Sex+Age_at_recruitment+Country+School_level,data=DB_summary_HN_OK)
 summary(HN_Cox_adj7)
-ggforest(HN_Cox_adj7, data=as.data.frame(DB_summary), main = "Forest plot for coxph model with Physical activity\n (adjusted by smoking status, alcohol pattern, hypertension, diabetes, sex, age at recruitment, country and school level)\n \n Hazard Ratio")
+suppfig4 <- ggforest(HN_Cox_adj7, data=as.data.frame(DB_summary_HN_OK))
+
 #QE_ENERGY
-HN_Cox_adj8<-coxph(Surv(time_followup, case_hn)~QE_ENERGY+Smoke_Stat+Alc_Pattern+Hypert+Diabet+Sex+Age_Recr+Country+L_School,data=DB_summary)
+HN_Cox_adj8<-coxph(Surv(time_followup, case_hn)~Energy_intake+Smoking_status+Alcohol_pattern+Hypertension+Diabetes+Sex+Age_at_recruitment+Country+School_level,data=DB_summary_HN_OK)
 summary(HN_Cox_adj8)
-ggforest(HN_Cox_adj8, data=as.data.frame(DB_summary), main = "Forest plot for coxph model with Energy intake\n (adjusted by smoking status, alcohol pattern, hypertension, diabetes, sex, age at recruitment, country and school level)\n \n Hazard Ratio")
+suppfig5 <- ggforest(HN_Cox_adj8, data=as.data.frame(DB_summary_HN_OK))
 
 #Asbestos_Cum
 
-#Removal of cases with country="France" & "The Netherlands" because no data + UK because upper .95 =Inf for France (only 2 cases and no males) so analysis does not work
+#Removal of cases with country="The Netherlands" because no data + UK because upper .95 =Inf for France (only 2 cases and no males) so analysis does not work
 #379825 obs => 191997
-DB_summary_asbestos <- DB_summary %>% filter(Country != "France" & Country != "The Netherlands" & Country != "United Kingdom")
+DB_summary_asbestos <- DB_summary_HN_OK %>% filter(Country != "The Netherlands" & Country != "United Kingdom")
 #Remove factor with no data
 DB_summary_asbestos$Country = droplevels(DB_summary_asbestos$Country)
 
-#Removal of cases with L_School="Not specified" because upper .95 =Inf so analysis does not work
+#Removal of cases with School_level="Missing" because upper .95 =Inf so analysis does not work
 #191997 obs => 191520
-DB_summary_asbestos <- DB_summary_asbestos %>% filter(L_School != "Not specified")
+DB_summary_asbestos <- DB_summary_asbestos %>% filter(School_level != "Missing")
 #Remove factor with no data
-DB_summary_asbestos$L_School = droplevels(DB_summary_asbestos$L_School)
+DB_summary_asbestos$School_level = droplevels(DB_summary_asbestos$School_level)
 
-HN_Cox_adj5<-coxph(Surv(time_followup, case_hn)~Asbestos_Cum+Smoke_Stat+Alc_Pattern+Hypert+Diabet+Sex+Age_Recr+Country+L_School,data=DB_summary_asbestos)
+HN_Cox_adj5<-coxph(Surv(time_followup, case_hn)~Asbestos+Smoking_status+Alcohol_pattern+Hypertension+Diabetes+Sex+Age_at_recruitment+Country+School_level,data=DB_summary_asbestos)
 summary(HN_Cox_adj5)
-ggforest(HN_Cox_adj5, data=as.data.frame(DB_summary), main = "Forest plot for coxph model with Asbestos exposure\n (adjusted by smoking status, alcohol pattern, hypertension, diabetes, sex, age at recruitment, country and school level)\n \n Hazard Ratio")
+suppfig6 <- ggforest(HN_Cox_adj5, data=as.data.frame(DB_summary_asbestos))
 
 ###################### LARYNX
-#Removal of cases with country="France" because upper .95 =Inf for France (only 2 cases and no males) so analysis does not work
-#379825 obs => 311068
-
-DB_summary_larynx <- DB_summary %>% filter(Country != "France")
-#Remove factor with no data
-DB_summary_larynx$Country = droplevels(DB_summary_larynx$Country)
+DB_summary_larynx <- DB_summary_HN_OK
 
 #All effective factors
-HN_larynx_Cox_adj_all<-coxph(Surv(time_followup_larynx, case_hn_larynx)~Smoke_Stat+Alc_Pattern+Hypert+Diabet+Sex+Age_Recr+Country+L_School,data=DB_summary_larynx)
+HN_larynx_Cox_adj_all<-coxph(Surv(time_followup_larynx, case_hn_larynx)~Smoking_status+Alcohol_pattern+Hypertension+Diabetes+Sex+Age_at_recruitment+Country+School_level,data=DB_summary_larynx)
 summary(HN_larynx_Cox_adj_all)
-ggforest(HN_larynx_Cox_adj_all, data=as.data.frame(DB_summary_larynx), main = "Forest plot for coxph model with Smoking status and Alcohol pattern for Larynx subtype (n=268)\n (without Country=France and adjusted by hypertension, diabetes, sex, age at recruitment, country and school level)\n \n Hazard Ratio")
+suppfig7 <- ggforest(HN_larynx_Cox_adj_all, data=as.data.frame(DB_summary_larynx))
 table(DB_summary_larynx$case_hn_larynx) #268
 
 #Proportional hazard assumption -> Schoenfeld residuals
 cox.zph(HN_larynx_Cox_adj_all)
 
 ###################### ORAL CAVITY
-#Removal of cases with country="France" because upper .95 =Inf for France (only 2 cases and no males) so analysis does not work
-#379825 obs => 311068
-DB_summary_oral_cavity <- DB_summary %>% filter(Country != "France")
-#Remove factor with no data
-DB_summary_oral_cavity$Country = droplevels(DB_summary_oral_cavity$Country)
 
 #Removal of cases with Smoke_Stat="Unknown" because upper .95 =Inf so analysis does not work
 #311068 obs => 308111
-DB_summary_oral_cavity <- DB_summary_oral_cavity %>% filter(Smoke_Stat != "Unknown")
+DB_summary_oral_cavity <- DB_summary_HN_OK %>% filter(Smoking_status != "Unknown")
 #Remove factor with no data
-DB_summary_oral_cavity$Smoke_Stat = droplevels(DB_summary_oral_cavity$Smoke_Stat)
+DB_summary_oral_cavity$Smoking_status = droplevels(DB_summary_oral_cavity$Smoking_status)
 
-HN_oral_cavity_Cox_adj_all<-coxph(Surv(time_followup_oral_cavity, case_hn_oral_cavity)~Smoke_Stat+Alc_Pattern+Hypert+Diabet+Sex+Age_Recr+Country+L_School,data=DB_summary_oral_cavity)  
+HN_oral_cavity_Cox_adj_all<-coxph(Surv(time_followup_oral_cavity, case_hn_oral_cavity)~Smoking_status+Alcohol_pattern+Hypertension+Diabetes+Sex+Age_at_recruitment+Country+School_level,data=DB_summary_oral_cavity)  
 summary(HN_oral_cavity_Cox_adj_all)
-ggforest(HN_oral_cavity_Cox_adj_all, data=as.data.frame(DB_summary_oral_cavity), main = "Forest plot for coxph model with Smoking status and Alcohol pattern for Oral Cavity subtype (n=186)\n (without Country=France and Smoke_Stat=Unknown and adjusted by hypertension, diabetes, sex, age at recruitment, country and school level)\n \n Hazard Ratio")
+suppfig9 <- ggforest(HN_oral_cavity_Cox_adj_all, data=as.data.frame(DB_summary_oral_cavity))
 table(DB_summary_oral_cavity$case_hn_oral_cavity) #186
-
 cox.zph(HN_oral_cavity_Cox_adj_all)
 
 ###################### OROPHARYNX
-HN_oropharynx_Cox_adj_all<-coxph(Surv(time_followup_oropharynx, case_hn_oropharynx)~Smoke_Stat+Alc_Pattern+Hypert+Diabet+Sex+Age_Recr+Country+L_School,data=DB_summary)
-summary(HN_oropharynx_Cox_adj_all)
-ggforest(HN_oropharynx_Cox_adj_all, data=as.data.frame(DB_summary), main = "Forest plot for coxph model with Smoking status and Alcohol pattern for Oropharynx subtype (n=177)\n (adjusted by hypertension, diabetes, sex, age at recruitment, country and school level)\n \n Hazard Ratio")
-table(DB_summary$case_hn_oropharynx) #177
+DB_summary_oropharynx <- DB_summary_HN_OK %>% filter(Smoking_status != "Unknown")
+#Remove factor with no data
+DB_summary_oropharynx$Smoking_status = droplevels(DB_summary_oropharynx$Smoking_status)
 
+HN_oropharynx_Cox_adj_all<-coxph(Surv(time_followup_oropharynx, case_hn_oropharynx)~Smoking_status+Alcohol_pattern+Hypertension+Diabetes+Sex+Age_at_recruitment+Country+School_level,data=DB_summary_oropharynx)
+summary(HN_oropharynx_Cox_adj_all)
+suppfig8 <- ggforest(HN_oropharynx_Cox_adj_all, data=as.data.frame(DB_summary_oropharynx))
+table(DB_summary$case_hn_oropharynx) #177
 cox.zph(HN_oropharynx_Cox_adj_all)
 
 ###################### HYPOPHARYNX
-#Removal of cases with country="France" because upper .95 =Inf for France (only 2 cases and no males) so analysis does not work
-#379825 obs => 311068
-DB_summary_hypopharynx <- DB_summary %>% filter(Country != "France")
-#Remove factor with no data
-DB_summary_hypopharynx$Country = droplevels(DB_summary_hypopharynx$Country)
-
 #Removal of cases with Smoke_Stat="Unknown" because upper .95 =Inf so analysis does not work
 #311068 obs => 308111
-DB_summary_hypopharynx <- DB_summary_hypopharynx %>% filter(Smoke_Stat != "Unknown")
+DB_summary_hypopharynx <- DB_summary_HN_OK %>% filter(Smoking_status != "Unknown")
 #Remove factor with no data
-DB_summary_hypopharynx$Smoke_Stat = droplevels(DB_summary_hypopharynx$Smoke_Stat)
+DB_summary_hypopharynx$Smoking_status = droplevels(DB_summary_hypopharynx$Smoking_status)
 
 #Removal of cases with AlC_Pattern="Light drinkers" because upper .95 =Inf for AlC_Pattern=Light drinkers so analysis does not work
 #308111 obs => 268459
-DB_summary_hypopharynx <- DB_summary_hypopharynx %>% filter(Alc_Pattern != "Light drinkers")
+DB_summary_hypopharynx <- DB_summary_hypopharynx %>% filter(Alcohol_pattern != "Light drinkers")
 #Remove factor with no data
-DB_summary_hypopharynx$Alc_Pattern = droplevels(DB_summary_hypopharynx$Alc_Pattern)
+DB_summary_hypopharynx$Alcohol_pattern = droplevels(DB_summary_hypopharynx$Alcohol_pattern)
 
-HN_hypopharynx_Cox_adj_all<-coxph(Surv(time_followup_hypopharynx, case_hn_hypopharynx)~Smoke_Stat+Alc_Pattern+Hypert+Diabet+Sex+Age_Recr+Country+L_School,data=DB_summary_hypopharynx)
+HN_hypopharynx_Cox_adj_all<-coxph(Surv(time_followup_hypopharynx, case_hn_hypopharynx)~Smoking_status+Alcohol_pattern+Hypertension+Diabetes+Sex+Age_at_recruitment+Country+School_level,data=DB_summary_hypopharynx)
 summary(HN_hypopharynx_Cox_adj_all)
-ggforest(HN_hypopharynx_Cox_adj_all, data=as.data.frame(DB_summary_hypopharynx), main = "Forest plot for coxph model with Smoking status and Alcohol pattern for Hypopharynx subtype (n=53)\n (without Country=France, Smoke_Stat=Unknown and Alc_Pattern=Light drinkers \n & adjusted by hypertension, diabetes, sex, age at recruitment, country and school level)\n \n Hazard Ratio")
+suppfig10 <- ggforest(HN_hypopharynx_Cox_adj_all, data=as.data.frame(DB_summary_hypopharynx))
 table(DB_summary_hypopharynx$case_hn_hypopharynx) #53
-
 cox.zph(HN_hypopharynx_Cox_adj_all)
 
 ###################### LIP
-#Removal of cases with country="France" because upper .95 =Inf for France (only 2 cases and no males) so analysis does not work
-#379825 obs => 311068
-DB_summary_lip <- DB_summary %>% filter(Country != "France")
-#Remove factor with no data
-DB_summary_lip$Country = droplevels(DB_summary_lip$Country)
-
 #Removal of cases with Smoke_Stat="Unknown" because upper .95 =Inf for Smoke_Stat=Unknown so analysis does not work
 #311068 obs => 308111
-DB_summary_lip <- DB_summary_lip %>% filter(Smoke_Stat != "Unknown")
+DB_summary_lip <- DB_summary_HN_OK %>% filter(Smoking_status != "Unknown")
 #Remove factor with no data
-DB_summary_lip$Smoke_Stat = droplevels(DB_summary_lip$Smoke_Stat)
+DB_summary_lip$Smoking_status = droplevels(DB_summary_lip$Smoking_status)
 
 #Removal of cases with L_School="Longer education (incl. University deg.)" because upper .95 =Inf so analysis does not work
 #308111 obs => 235247
-DB_summary_lip <- DB_summary_lip %>% filter(L_School != "Longer education")
+DB_summary_lip <- DB_summary_lip %>% filter(School_level != "Longer")
 #Remove factor with no data
-DB_summary_lip$L_School = droplevels(DB_summary_lip$L_School)
+DB_summary_lip$School_level = droplevels(DB_summary_lip$School_level)
 
 #Removal of cases with Alc_Pattern="Former heavy drinkers" because upper .95 =Inf so analysis does not work
 #235247 obs => 233801
-DB_summary_lip <- DB_summary_lip %>% filter(Alc_Pattern != "Former heavy drinkers")
+DB_summary_lip <- DB_summary_lip %>% filter(Alcohol_pattern != "Former heavy drinkers")
 #Remove factor with no data
-DB_summary_lip$Alc_Pattern = droplevels(DB_summary_lip$Alc_Pattern)
+DB_summary_lip$Alcohol_pattern = droplevels(DB_summary_lip$Alcohol_pattern)
 
 #Removal of cases with Diabet="Do not know" because upper .95 =Inf so analysis does not work
 #233801 obs => 205939
-DB_summary_lip <- DB_summary_lip %>% filter(Diabet != "Do not know")
+DB_summary_lip <- DB_summary_lip %>% filter(Diabetes != "Do not know")
 #Remove factor with no data
-DB_summary_lip$Diabet = droplevels(DB_summary_lip$Diabet)
+DB_summary_lip$Diabetes = droplevels(DB_summary_lip$Diabetes)
 
-HN_lip_Cox_adj_all<-coxph(Surv(time_followup_lip, case_hn_lip)~Smoke_Stat+Alc_Pattern+Hypert+Diabet+Sex+Age_Recr+Country+L_School,data=DB_summary_lip)
+HN_lip_Cox_adj_all<-coxph(Surv(time_followup_lip, case_hn_lip)~Smoking_status+Alcohol_pattern+Hypertension+Diabetes+Sex+Age_at_recruitment+Country+School_level,data=DB_summary_lip)
 summary(HN_lip_Cox_adj_all)
-ggforest(HN_lip_Cox_adj_all, data=as.data.frame(DB_summary_lip), main = "Forest plot for coxph model with Smoking status and Alcohol pattern for Lip subtype (n=51)\n (without Country=France, Smoke_Stat=Unknown, L_School=Longer education, Alc_Pattern=Former heavy drinkers and Diabet=Do not know \n & adjusted by hypertension, diabetes, sex, age at recruitment, country and school level)\n \n Hazard Ratio")
+suppfig11 <- ggforest(HN_lip_Cox_adj_all, data=as.data.frame(DB_summary_lip))
 table(DB_summary_lip$case_hn_lip) #51
+cox.zph(HN_lip_Cox_adj_all)
